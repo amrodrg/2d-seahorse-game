@@ -48,7 +48,59 @@ window.addEventListener("load", function () {
     }
   }
 
-  class Particle {}
+  class Particle {
+    constructor(game, x, y) {
+      this.game = game;
+      this.x = x;
+      this.y = y;
+      this.image = document.getElementById("gears");
+      this.frameX = Math.floor(Math.random() * 3);
+      this.frameY = Math.floor(Math.random() * 3);
+      this.spriteSize = 50;
+      this.sizeModifier = (Math.random() * 0.5 + 0.5).toFixed(1);
+      this.size = this.spriteSize * this.sizeModifier;
+      this.speedX = Math.random() * 6 - 3;
+      this.speedY = Math.random() * -15;
+      this.gravity = 0.5;
+      this.markedForDeletion = false;
+      this.angle = 0;
+      this.va = Math.random() * 0.2 - 0.1;
+      this.bounced = 0;
+      this.bottomBounceBoundary = Math.random() * 100 + 60;
+    }
+    update() {
+      this.angle += this.va;
+      this.speedY += this.gravity;
+      this.x -= this.speedX + this.game.speed;
+      this.y += this.speedY;
+      if (this.y > this.game.height + this.size || this.x < 0 - this.size)
+        this.markedForDeletion = true;
+      if (
+        this.y > this.game.height - this.bottomBounceBoundary &&
+        this.bounced < 2
+      ) {
+        this.bounced++;
+        this.speedY *= -0.5;
+      }
+    }
+    draw(context) {
+      context.save();
+      context.translate(this.x, this.y);
+      context.rotate(this.angle);
+      context.drawImage(
+        this.image,
+        this.frameX * this.spriteSize,
+        this.frameY * this.spriteSize,
+        this.spriteSize,
+        this.spriteSize,
+        this.size * -0.5,
+        this.size * -0.5,
+        this.size,
+        this.size
+      );
+      context.restore();
+    }
+  }
 
   class Player {
     constructor(game) {
@@ -74,6 +126,10 @@ window.addEventListener("load", function () {
         this.speedY = this.maxSpeed;
       else this.speedY = 0;
       this.y += this.speedY;
+      // vertical boundaries
+      if (this.y > this.game.height - this.height * 0.5)
+        this.y = this.game.height - this.height * 0.5;
+      else if (this.y < -this.height * 0.5) this.y = -this.height * 0.5;
       // handle projectiles
       this.projectiles.forEach((projectile) => {
         projectile.update();
@@ -175,8 +231,10 @@ window.addEventListener("load", function () {
         this.height
       );
       context.fillStyle = "black";
-      context.font = "20px Helvetica";
-      context.fillText(this.lives, this.x, this.y);
+      if (this.game.debug) {
+        context.font = "20px Helvetica";
+        context.fillText(this.lives, this.x, this.y);
+      }
     }
   }
 
@@ -323,6 +381,7 @@ window.addEventListener("load", function () {
       this.ui = new UI(this);
       this.keys = [];
       this.enemies = [];
+      this.particles = [];
       this.enemyTimer = 0;
       this.enemyInterval = 1000;
       this.ammo = 20;
@@ -331,9 +390,9 @@ window.addEventListener("load", function () {
       this.ammoInterval = 500;
       this.gameOver = false;
       this.score = 0;
-      this.winningScore = 10;
+      this.winningScore = 300;
       this.gameTime = 0;
-      this.timeLimit = 20000;
+      this.timeLimit = 60000;
       this.speed = 1;
       this.debug = true;
     }
@@ -350,11 +409,25 @@ window.addEventListener("load", function () {
       } else {
         this.ammoTimer += deltaTime;
       }
+      // handle particles
+      this.particles.forEach((particle) => particle.update());
+      this.particles = this.particles.filter(
+        (particle) => !particle.markedForDeletion
+      );
       // handle enemies
       this.enemies.forEach((enemy) => {
         enemy.update();
         if (this.checkCollision(this.player, enemy)) {
           enemy.markedForDeletion = true;
+          for (let i = 0; i < 10; i++) {
+            this.particles.push(
+              new Particle(
+                this,
+                enemy.x + enemy.width * 0.5,
+                enemy.y + enemy.height * 0.5
+              )
+            );
+          }
           if (enemy.type === "lucky") this.player.enterPowerUp();
           else this.score--;
         }
@@ -362,7 +435,23 @@ window.addEventListener("load", function () {
           if (this.checkCollision(projectile, enemy)) {
             enemy.lives--;
             projectile.markedForDeletion = true;
+            this.particles.push(
+              new Particle(
+                this,
+                enemy.x + enemy.width * 0.5,
+                enemy.y + enemy.height * 0.5
+              )
+            );
             if (enemy.lives <= 0) {
+              for (let i = 0; i < 10; i++) {
+                this.particles.push(
+                  new Particle(
+                    this,
+                    enemy.x + enemy.width * 0.5,
+                    enemy.y + enemy.height * 0.5
+                  )
+                );
+              }
               enemy.markedForDeletion = true;
               if (!this.gameOver) this.score += enemy.score;
               if (this.score > this.winningScore) this.gameOver = true;
@@ -382,6 +471,7 @@ window.addEventListener("load", function () {
       this.background.draw(context);
       this.player.draw(context);
       this.ui.draw(context);
+      this.particles.forEach((particle) => particle.draw(context));
       this.enemies.forEach((enemy) => {
         enemy.draw(context);
       });
